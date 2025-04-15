@@ -1,150 +1,70 @@
-
-// Load Wi-Fi library
-#include <WiFi.h>
 #include <ESP32Servo.h>
 
-// Replace with your network credentials
-const char* ssid = "GASPARD 5667";
-const char* password = "12345678";
+#define PULSE_ENCODEUR 13
+#define PWM_MOTEUR 12
+#define VITESSE_MINIMALE 1050 
+#define VITESSE_MAXIMALE 1950
+#define FREQ 50
 
-// Set web server port number to 80
-WiFiServer server(80);
+const float pulseParRotation = 14;
+const float multiplicateurBoiteAVitesse = (1 + (46 / 17)) * (1 + (46 / 17)) * (1 + (46 / 17));
 
-// Variable to store the HTTP request
-String header;
 
-// Auxiliar variables to store the current output state
-String output26State = "off";
-String output27State = "off";
+const int longeurMaxVitessesMoyennesMoteur = 16;
+float vitessesMoyennesMoteur[longeurMaxVitessesMoyennesMoteur] = {}; 
+int indexVitessesMoyennesMoteur = 0;
+int longueurVitessesMoyennesMoteur = 0;
+ 
+Servo moteur;
 
-// Assign output variables to GPIO pins
-const int output26 = 26;
-const int output27 = 27;
-
-// Current time
-unsigned long currentTime = millis();
-// Previous time
-unsigned long previousTime = 0; 
-// Define timeout time in milliseconds (example: 2000ms = 2s)
-const long timeoutTime = 2000;
-
-Servo servo;
-int servoPin = 25;
+void setVitesseMoteur(float vitesse) {
+  float entreeMoteur = vitesse * (VITESSE_MAXIMALE - VITESSE_MINIMALE) + VITESSE_MINIMALE;
+  moteur.write(entreeMoteur);
+}
 
 void setup() {
   Serial.begin(115200);
-
-  // Connect to Wi-Fi network with SSID and password
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  // Print local IP address and start web server
-  Serial.println("");
-  Serial.println("WiFi connected.");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  server.begin();
-
+  pinMode(PULSE_ENCODEUR, INPUT);
+  pinMode(PWM_MOTEUR, OUTPUT);
   ESP32PWM::allocateTimer(0);
 	ESP32PWM::allocateTimer(1);
 	ESP32PWM::allocateTimer(2);
 	ESP32PWM::allocateTimer(3);
-	servo.setPeriodHertz(50);    // standard 50 hz servo
-	servo.attach(servoPin, 1050, 1950); // attaches the servo on pin 18 to the servo object
+  moteur.setPeriodHertz(FREQ);
+  moteur.attach(PWM_MOTEUR, VITESSE_MINIMALE, VITESSE_MAXIMALE);
 }
 
-void loop(){
-  WiFiClient client = server.available();   // Listen for incoming clients
+float lireVitesseMoteur() {
+  float encodeurMicros = pulseIn(PULSE_ENCODEUR, HIGH, 300000);
+  if (encodeurMicros == 0) {
+    return 0;
+  } 
 
-  if (client) {                             // If a new client connects,
-    currentTime = millis();
-    previousTime = currentTime;
-    Serial.println("New Client.");          // print a message out in the serial port
-    String currentLine = "";                // make a String to hold incoming data from the client
-    while (client.connected() && currentTime - previousTime <= timeoutTime) {  // loop while the client's connected
-      currentTime = millis();
-      if (client.available()) {             // if there's bytes to read from the client,
-        char c = client.read();             // read a byte, then
-        Serial.write(c);                    // print it out the serial monitor
-        header += c;
-        if (c == '\n') {                    // if the byte is a newline character
-          // if the current line is blank, you got two newline characters in a row.
-          // that's the end of the client HTTP request, so send a response:
-          if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // and a content-type so the client knows what's coming, then a blank line:
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println("Connection: close");
-            client.println();
-            
-            // turns the GPIOs on and off
-            if (header.indexOf("GET /27/on") >= 0) {
-              Serial.println("GPIO 27 on");
-              output27State = "on";
-              servo.writeMicroseconds(1500);
-              digitalWrite(output27, HIGH);
-            } else if (header.indexOf("GET /27/off") >= 0) {
-              Serial.println("GPIO 27 off");
-              output27State = "off";
-              digitalWrite(output27, LOW);
-              servo.writeMicroseconds(2000);
-            }
-            
-            // Display the HTML web page
-            client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-            client.println("<link rel=\"icon\" href=\"data:,\">");
-            // CSS to style the on/off buttons 
-            // Feel free to change the background-color and font-size attributes to fit your preferences
-            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
-            client.println(".button { background-color: #4CAF50; border: none; color: white; padding: 16px 40px;");
-            client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
-            client.println(".button2 {background-color: #555555;}</style></head>");
-            
-            // Web Page Heading
-            client.println("<body><h1>ESP32 Web Server</h1>");
-            
-            // Display current state, and ON/OFF buttons for GPIO 26  
-            client.println("<p>GPIO 26 - State " + output26State + "</p>");
-            // If the output26State is off, it displays the ON button       
-            if (output26State=="off") {
-              client.println("<p><a href=\"/26/on\"><button class=\"button\">ON</button></a></p>");
-            } else {
-              client.println("<p><a href=\"/26/off\"><button class=\"button button2\">OFF</button></a></p>");
-            } 
-               
-            // Display current state, and ON/OFF buttons for GPIO 27  
-            client.println("<p>GPIO 27 - State " + output27State + "</p>");
-            // If the output27State is off, it displays the ON button       
-            if (output27State=="off") {
-              client.println("<p><a href=\"/27/on\"><button class=\"button\">ON</button></a></p>");
-            } else {
-              client.println("<p><a href=\"/27/off\"><button class=\"button button2\">OFF</button></a></p>");
-            }
-            client.println("</body></html>");
-            
-            // The HTTP response ends with another blank line
-            client.println();
-            // Break out of the while loop
-            break;
-          } else { // if you got a newline, then clear currentLine
-            currentLine = "";
-          }
-        } else if (c != '\r') {  // if you got anything else but a carriage return character,
-          currentLine += c;      // add it to the end of the currentLine
-        }
-      }
-    }
-    // Clear the header variable
-    header = "";
-    // Close the connection
-    client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
+  float vitesseRPS = ((1000000.0 / encodeurMicros) / pulseParRotation) / multiplicateurBoiteAVitesse;
+  float entreeRPM = vitesseRPS * 60;
+  vitessesMoyennesMoteur[indexVitessesMoyennesMoteur++] = entreeRPM;
+  indexVitessesMoyennesMoteur %= longeurMaxVitessesMoyennesMoteur;
+  longueurVitessesMoyennesMoteur = min(longueurVitessesMoyennesMoteur + 1, longeurMaxVitessesMoyennesMoteur);
+
+  float vitesseRPM = 0;
+
+  for (int i = 0; i < longueurVitessesMoyennesMoteur; i++) {
+    vitesseRPM += vitessesMoyennesMoteur[i];
   }
+
+  return vitesseRPM / longueurVitessesMoyennesMoteur;
+}
+
+void loop() {
+  Serial.println("Min speed");
+  setVitesseMoteur(0.0);
+  delay(2000);
+  
+  Serial.println("Mid speed");
+  setVitesseMoteur(0.5);
+  delay(2000);
+  
+  Serial.println("Max speed");
+  setVitesseMoteur(1.0);
+  delay(2000);
 }
