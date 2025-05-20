@@ -2,10 +2,15 @@
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 
+// Permet de choisir le pin pour utilser, dependant des differents exigences
 #define PWM_MOTEUR 25
+// Vitesse maximale du moteur, trouvee en ligne dans les consignes du moteur
 #define VITESSE_MINIMALE 1050
+// Vitesse minmale du moteur, trouvee en ligne dans les consignes du moteur
 #define VITESSE_MAXIMALE 1950
+// Frequence pour utiliser le Servo. Une constante
 #define FREQ 50
+// Vitesse maximale du moteur en RPM
 #define VITESSE_MAXIMALE_RPM 360
 
 // Structure pour implémenter une Map simple
@@ -333,7 +338,7 @@ void loop() {
     }
     
     // Si on a une distance, calculer la vitesse RPM correspondante
-    if (doc.containsKey("distance")) {
+    if (doc.containsKey("distance-entree")) {
       float distance = doc["distance"];
       // Utiliser l'angle actuel et la distance pour déterminer la vitesse RPM
       vitesse = obtenirVitesseRPM(angleActuel, distance);
